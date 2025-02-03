@@ -4,4 +4,4 @@ mount -t sysfs sys /sys
 mount -t devtmpfs dev /dev
 mount -t tmpfs run /run
 
-exec /bin/sh
+exec /bin/init

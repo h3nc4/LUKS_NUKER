@@ -33,15 +33,16 @@ RUN tar --strip-components=1 -xf dash-0.5.12.tar.gz && \
 FROM builder AS final-builder
 WORKDIR /rootfs
 COPY configs/init ./init
+COPY configs/inittab ./etc/inittab
 RUN chmod +x ./init && \
-	mkdir -p bin sbin dev proc sys tmp var etc
+	mkdir -p bin sbin dev proc sys tmp var etc run
 
 COPY --from=busybox-builder /busybox/_install/bin/ bin/
 RUN rm bin/sh
 COPY --from=dash-builder /dash/src/dash bin/
 COPY --from=kernel-builder /kernel/arch/x86/boot/bzImage ./bzImage
 
-RUN cd bin && ln -s dash sh
+RUN cd bin && ln -s dash sh && ln -s busybox init
 RUN find . | cpio -o -H newc | gzip >/initrd.img
 
 CMD ["cp", "/initrd.img", "/rootfs/bzImage", "/output/"]
