@@ -4,7 +4,7 @@ RUN apt-get update && \
 	bc binutils bison bzip2 cpio dwarves flex gcc git gnupg2 grub-pc-bin grub-common gzip \
 	libblkid-dev libelf-dev libdevmapper-dev libjson-c-dev libncurses5-dev libpopt-dev libssh-dev \
 	libssl-dev make openssl pkg-config pahole perl-base rsync tar uuid-dev xorriso xz-utils \
-	gawk gdb texinfo python3 python3-pexpect \
+	gawk gdb texinfo python3 python3-pexpect gperf \
 	&& \
 	apt-get clean
 
@@ -35,6 +35,41 @@ RUN mkdir -p /stage/lib64 && \
 	cd /stage/lib && \
 	ln -s . x86_64-linux-gnu
 
+FROM builder AS eudev-builder
+WORKDIR /eudev
+COPY --from=kernel-headers /kernel/built-headers/include /usr/local/include
+ADD https://github.com/eudev-project/eudev/releases/download/v3.2.14/eudev-3.2.14.tar.gz /eudev/
+RUN tar --strip-components=1 -xf eudev-3.2.14.tar.gz && \
+	mkdir build && cd build && \
+	../configure --with-rootprefix=/ \
+		--libdir=/lib \
+		--sysconfdir=/etc && \
+	make -j$(nproc) && \
+	make install DESTDIR=/stage
+
+FROM builder AS selinux-builder
+WORKDIR /selinux
+COPY --from=kernel-headers /kernel/built-headers/include /usr/local/include
+ADD https://github.com/SELinuxProject/selinux/releases/download/3.8/libsepol-3.8.tar.gz /selinux/
+RUN tar xf libsepol-3.8.tar.gz && \
+	cd libsepol-3.8/ && \
+	make -j$(nproc) && \
+	make install DESTDIR=/stage
+ADD https://github.com/SELinuxProject/selinux/releases/download/3.8/libselinux-3.8.tar.gz /selinux/
+RUN tar xf libselinux-3.8.tar.gz && \
+	cd libselinux-3.8 && \
+	make -j$(nproc) && \
+	make install DESTDIR=/stage
+
+FROM builder AS pcre2-builder
+WORKDIR /pcre2
+COPY --from=kernel-headers /kernel/built-headers/include /usr/local/include
+ADD https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.45/pcre2-10.45.tar.gz /pcre2/
+RUN tar --strip-components=1 -xf pcre2-10.45.tar.gz && \
+	./configure --prefix=/ --enable-utf --enable-unicode-properties --enable-pcre2-8 && \
+	make -j$(nproc) && \
+	make install DESTDIR=/stage
+
 FROM builder AS kernel-builder
 WORKDIR /kernel
 ADD https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.1.tar.xz /kernel/
@@ -42,6 +77,15 @@ RUN tar --strip-components=1 -xf linux-6.13.1.tar.xz && \
 	./scripts/config --file .config --set-str LOCALVERSION "-luksnuker" && \
 	make defconfig && \
 	make -j$(nproc) bzImage
+
+FROM builder AS utils-builder
+WORKDIR /util-linux
+COPY --from=kernel-headers /kernel/built-headers/include /usr/local/include
+ADD https://mirrors.edge.kernel.org/pub/linux/utils/util-linux/v2.39/util-linux-2.39.4.tar.xz /util-linux/
+RUN tar --strip-components=1 -xf util-linux-2.39.4.tar.xz && \
+	./configure && \
+	make -j$(nproc) && \
+	make DESTDIR=/util-linux/build install
 
 FROM builder AS busybox-builder
 WORKDIR /busybox
@@ -66,6 +110,10 @@ RUN chmod +x ./init && \
 	mkdir -p bin sbin dev proc sys tmp var etc run
 
 COPY --from=glibc-builder /stage/ ./
+COPY --from=eudev-builder /stage/ ./
+COPY --from=selinux-builder /stage/ ./
+COPY --from=pcre2-builder /stage/ ./
+COPY --from=utils-builder /util-linux/build ./
 COPY --from=busybox-builder /busybox/_install/bin/ bin/
 RUN rm bin/sh
 COPY --from=dash-builder /dash/src/dash bin/
