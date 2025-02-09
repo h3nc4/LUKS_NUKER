@@ -78,6 +78,9 @@ RUN tar --strip-components=1 -xf linux-6.13.1.tar.xz && \
 	make defconfig && \
 	make -j$(nproc) bzImage
 
+RUN mkdir -p /stage && \
+	mv /kernel/arch/x86/boot/bzImage /stage/
+
 FROM builder AS utils-builder
 WORKDIR /util-linux
 COPY --from=kernel-headers /kernel/built-headers/include /usr/local/include
@@ -85,14 +88,14 @@ ADD https://mirrors.edge.kernel.org/pub/linux/utils/util-linux/v2.39/util-linux-
 RUN tar --strip-components=1 -xf util-linux-2.39.4.tar.xz && \
 	./configure && \
 	make -j$(nproc) && \
-	make DESTDIR=/util-linux/build install
+	make DESTDIR=/stage install
 
 FROM builder AS busybox-builder
 WORKDIR /busybox
 ADD https://busybox.net/downloads/busybox-1.36.1.tar.bz2 /busybox/
 RUN tar --strip-components=1 -xf busybox-1.36.1.tar.bz2 && \
 	make defconfig && \
-	make -j$(nproc) install
+	make -j$(nproc) install CONFIG_PREFIX=/stage
 
 FROM builder AS dash-builder
 WORKDIR /dash
@@ -101,6 +104,9 @@ RUN tar --strip-components=1 -xf dash-0.5.12.tar.gz && \
 	./configure && \
 	make -j$(nproc) && \
 	make install
+
+RUN mkdir -p /stage/bin && \
+	mv /dash/src/dash /stage/bin/
 
 FROM builder AS final-builder
 WORKDIR /rootfs
@@ -113,13 +119,12 @@ COPY --from=glibc-builder /stage/ ./
 COPY --from=eudev-builder /stage/ ./
 COPY --from=selinux-builder /stage/ ./
 COPY --from=pcre2-builder /stage/ ./
-COPY --from=utils-builder /util-linux/build ./
-COPY --from=busybox-builder /busybox/_install/bin/ bin/
-RUN rm bin/sh
-COPY --from=dash-builder /dash/src/dash bin/
-COPY --from=kernel-builder /kernel/arch/x86/boot/bzImage ./bzImage
+COPY --from=utils-builder /stage/ ./
+COPY --from=busybox-builder /stage/ ./
+COPY --from=dash-builder /stage/ ./
+COPY --from=kernel-builder /stage/ ./
 
-RUN cd bin && ln -s dash sh && ln -s busybox init
-RUN find . | cpio -o -H newc | gzip -9 >/initrd.img
+RUN cd bin && rm -f sh && ln -s dash sh && ln -s busybox init && cd - && \
+	find . | cpio -o -H newc | gzip -9 >/initrd.img
 
 CMD ["cp", "/initrd.img", "/rootfs/bzImage", "/output/"]
