@@ -148,8 +148,12 @@ FROM builder AS kernel-builder
 WORKDIR /kernel
 ADD https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.1.tar.xz /kernel/
 RUN tar --strip-components=1 -xf linux-6.13.1.tar.xz && \
-	./scripts/config --file .config --set-str LOCALVERSION "-luksnuker" && \
 	make defconfig && \
+	./scripts/config --file .config --set-str LOCALVERSION "-luksnuker" && \
+	./scripts/config --file .config --enable CONFIG_DM_CRYPT && \
+	./scripts/config --file .config --enable CONFIG_CRYPTO_AES && \
+	./scripts/config --file .config --enable CONFIG_CRYPTO_AES_X86_64 && \
+	./scripts/config --file .config --enable CONFIG_CRYPTO_XTS && \
 	make -j$(nproc) bzImage
 
 RUN mkdir -p /stage && \
