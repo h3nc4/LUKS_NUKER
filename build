@@ -1,3 +1,3 @@
 mkdir -p output
 docker build -t luks_nuker . &&
-docker run --privileged --rm -v $(pwd)/output:/output -it luks_nuker
+docker run --privileged --rm -v "$PWD/output:/output" -it luks_nuker

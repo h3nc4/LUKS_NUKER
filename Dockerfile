@@ -2,9 +2,38 @@ FROM debian:stable-slim AS builder
 RUN apt-get update && \
 	DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
 	bc binutils bison bzip2 cpio dwarves flex gcc git gnupg2 grub-pc-bin grub-common gzip \
-	libelf-dev libncurses5-dev libssl-dev make openssl pahole perl-base rsync tar xorriso xz-utils \
+	libblkid-dev libelf-dev libdevmapper-dev libjson-c-dev libncurses5-dev libpopt-dev libssh-dev \
+	libssl-dev make openssl pkg-config pahole perl-base rsync tar uuid-dev xorriso xz-utils \
+	gawk gdb texinfo python3 python3-pexpect \
 	&& \
 	apt-get clean
+
+FROM builder AS kernel-headers
+WORKDIR /kernel
+ADD https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.1.tar.xz /kernel/
+RUN tar --strip-components=1 -xf linux-6.13.1.tar.xz && \
+	make mrproper && \
+	make headers_install INSTALL_HDR_PATH=/kernel/built-headers
+
+FROM builder AS glibc-builder
+WORKDIR /glibc
+COPY --from=kernel-headers /kernel/built-headers/include /usr/local/include
+ADD https://ftp.gnu.org/gnu/glibc/glibc-2.41.tar.xz /glibc/
+RUN tar --strip-components=1 -xf glibc-2.41.tar.xz && \
+	mkdir build && cd build && \
+	../configure --prefix=/ \
+		--libdir=/lib \
+		--sysconfdir=/etc \
+		--disable-werror \
+		--enable-kernel=6.13 && \
+	make -j$(nproc) && \
+	make install DESTDIR=/stage
+
+RUN mkdir -p /stage/lib64 && \
+	cd /stage/lib64 && \
+	ln -s ../lib/ld-linux-x86-64.so.2 && \
+	cd /stage/lib && \
+	ln -s . x86_64-linux-gnu
 
 FROM builder AS kernel-builder
 WORKDIR /kernel
@@ -19,14 +48,13 @@ WORKDIR /busybox
 ADD https://busybox.net/downloads/busybox-1.36.1.tar.bz2 /busybox/
 RUN tar --strip-components=1 -xf busybox-1.36.1.tar.bz2 && \
 	make defconfig && \
-	sed -i 's/^# CONFIG_STATIC is not set$/CONFIG_STATIC=y/' .config && \
 	make -j$(nproc) install
 
 FROM builder AS dash-builder
 WORKDIR /dash
 ADD http://gondor.apana.org.au/~herbert/dash/files/dash-0.5.12.tar.gz /dash/
 RUN tar --strip-components=1 -xf dash-0.5.12.tar.gz && \
-	./configure --enable-static && \
+	./configure && \
 	make -j$(nproc) && \
 	make install
 
@@ -37,12 +65,13 @@ COPY configs/inittab ./etc/inittab
 RUN chmod +x ./init && \
 	mkdir -p bin sbin dev proc sys tmp var etc run
 
+COPY --from=glibc-builder /stage/ ./
 COPY --from=busybox-builder /busybox/_install/bin/ bin/
 RUN rm bin/sh
 COPY --from=dash-builder /dash/src/dash bin/
 COPY --from=kernel-builder /kernel/arch/x86/boot/bzImage ./bzImage
 
 RUN cd bin && ln -s dash sh && ln -s busybox init
-RUN find . | cpio -o -H newc | gzip >/initrd.img
+RUN find . | cpio -o -H newc | gzip -9 >/initrd.img
 
 CMD ["cp", "/initrd.img", "/rootfs/bzImage", "/output/"]
