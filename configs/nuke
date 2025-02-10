@@ -1,0 +1,8 @@
+#!/bin/sh
+
+for DEVICE in $(lsblk -nd -o NAME); do
+	cryptsetup erase --batch-mode "/dev/$DEVICE"
+done
+
+echo "LUKS header wipe complete."
+echo o >/proc/sysrq-trigger

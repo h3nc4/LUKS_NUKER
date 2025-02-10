@@ -198,6 +198,7 @@ FROM builder AS final-builder
 WORKDIR /rootfs
 COPY configs/init ./init
 COPY configs/inittab ./etc/inittab
+COPY configs/nuke ./bin/nuke
 RUN chmod +x ./init && \
 	mkdir -p bin sbin dev proc sys tmp var etc run
 

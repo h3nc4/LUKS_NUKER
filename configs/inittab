@@ -1,1 +1,1 @@
-::respawn:/bin/cttyhack /bin/ash
+::respawn:/bin/cttyhack /bin/sh -c /bin/nuke
