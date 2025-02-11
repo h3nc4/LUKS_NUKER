@@ -35,6 +35,7 @@ RUN apt-get update && \
 	grub-common \
 	grub-pc-bin \
 	gzip \
+	g++ \
 	libblkid-dev \
 	libdevmapper-dev \
 	libelf-dev \
@@ -200,6 +201,15 @@ RUN tar --strip-components=1 -xf busybox-1.36.1.tar.bz2 && \
 	make defconfig && \
 	make -j$(nproc) install CONFIG_PREFIX=/stage
 
+FROM builder AS fastfetch-builder
+WORKDIR /fastfetch
+ADD https://github.com/fastfetch-cli/fastfetch/archive/refs/tags/2.36.0.tar.gz /fastfetch/fastfetch-2.36.0.tar.gz
+RUN tar --strip-components=1 -xf fastfetch-2.36.0.tar.gz && \
+	mkdir -p build && cd build && \
+	cmake -DBUILD_FLASHFETCH='OFF' .. && \
+	cmake --build . --target fastfetch && \
+	make install DESTDIR=/stage
+
 FROM builder AS dash-builder
 WORKDIR /dash
 ADD http://gondor.apana.org.au/~herbert/dash/files/dash-0.5.12.tar.gz /dash/
@@ -230,6 +240,7 @@ COPY --from=jsonc-builder /stage/ ./
 COPY --from=utils-builder /stage/ ./
 COPY --from=cryptsetup-builder /stage/ ./
 COPY --from=busybox-builder /stage/ ./
+COPY --from=fastfetch-builder /stage/ ./
 COPY --from=dash-builder /stage/ ./
 COPY --from=kernel-builder /stage/ ./
 
