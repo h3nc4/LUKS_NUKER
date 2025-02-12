@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+
+docker build --target "$1" -t "$1" .
+docker run --rm --name "$1" -it "$1" bash
