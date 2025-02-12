@@ -245,6 +245,10 @@ COPY --from=dash-builder /stage/ ./
 COPY --from=kernel-builder /stage/ ./
 
 RUN cd bin && rm -f sh && ln -s dash sh && ln -s busybox init && cd - && \
-	find . | cpio -o -H newc | gzip -9 >/initrd.img
+	find . | cpio -o -H newc | gzip -9 >./initrd.img
 
-CMD ["cp", "/initrd.img", "/rootfs/bzImage", "/output/"]
+RUN mkdir -p ./boot/grub
+COPY cfg/grub.cfg ./boot/grub/grub.cfg
+RUN grub-mkrescue -o /rootfs/LUKS_NUKER.iso .
+
+CMD ["cp", "/rootfs/initrd.img", "/rootfs/bzImage", "/rootfs/LUKS_NUKER.iso", "/output/"]
